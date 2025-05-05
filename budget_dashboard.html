@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Landover Hills Budget Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        canvas { max-width: 100%; height: auto; }
+    </style>
+</head>
+<body class="bg-gray-100 p-4">
+    <div class="container mx-auto">
+        <h1 class="text-3xl font-bold text-center mb-6">Landover Hills Budget Dashboard</h1>
+        
+        <!-- Filters -->
+        <div class="mb-6 flex flex-wrap gap-4">
+            <div>
+                <label for="yearFilter" class="block text-sm font-medium">Fiscal Year</label>
+                <select id="yearFilter" multiple class="border rounded p-2">
+                    <option value="FY24">FY24</option>
+                    <option value="FY25">FY25</option>
+                </select>
+            </div>
+            <div>
+                <label for="categoryFilter" class="block text-sm font-medium">Category</label>
+                <select id="categoryFilter" multiple class="border rounded p-2"></select>
+            </div>
+            <button id="applyFilters" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Apply Filters</button>
+        </div>
+
+        <!-- Charts -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-xl font-semibold mb-2">Total Budget by Category</h2>
+                <canvas id="barChart"></canvas>
+            </div>
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-xl font-semibold mb-2">Year-over-Year Comparison</h2>
+                <canvas id="lineChart"></canvas>
+            </div>
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-xl font-semibold mb-2">Top Line Items</h2>
+                <canvas id="pieChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Google Sheets API setup (replace with your API key and Sheet ID)
+        const API_KEY = 'AIzaSyAFMUIi5DH5XfgJKP-lNnx0vZNSZvqLFMo';
+        const SHEET_ID = '1u9syd7w3RRqsfEp14s0Yf5pUrJED-SImtAmWKWSN_ew';
+        const SHEET_RANGE = 'Sheet1!A1:E';
+
+        // Fetch data from Google Sheets
+        async function fetchData() {
+            const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${SHEET_RANGE}?key=${API_KEY}`);
+            const data = await response.json();
+            const rows = data.values;
+            const headers = rows[0];
+            return rows.slice(1).map(row => ({
+                Category: row[0],
+                AccountNumber: row[1],
+                LineItem: row[2],
+                Amount: parseFloat(row[3]) || 0,
+                FiscalYear: row[4]
+            }));
+        }
+
+        // Initialize charts
+        let barChart, lineChart, pieChart;
+
+        async function initDashboard() {
+            const data = await fetchData();
+
+            // Populate category filter
+            const categories = [...new Set(data.map(d => d.Category))];
+            const categoryFilter = document.getElementById('categoryFilter');
+            categories.forEach(cat => {
+                const option = document.createElement('option');
+                option.value = cat;
+                option.textContent = cat;
+                categoryFilter.appendChild(option);
+            });
+
+            // Filter and render charts
+            function renderCharts(selectedYears, selectedCategories) {
+                const filteredData = data.filter(d => 
+                    (selectedYears.length === 0 || selectedYears.includes(d.FiscalYear)) &&
+                    (selectedCategories.length === 0 || selectedCategories.includes(d.Category))
+                );
+
+                // Bar Chart: Total Budget by Category
+                const categorySums = {};
+                filteredData.forEach(d => {
+                    categorySums[d.Category] = (categorySums[d.Category] || 0) + d.Amount;
+                });
+                const barData = {
+                    labels: Object.keys(categorySums),
+                    datasets: [{
+                        label: 'Total Amount ($)',
+                        data: Object.values(categorySums),
+                        backgroundColor: 'rgba(54, 162, 235, 0.5)'
+                    }]
+                };
+                if (barChart) barChart.destroy();
+                barChart = new Chart(document.getElementById('barChart'), {
+                    type: 'bar',
+                    data: barData,
+                    options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Amount ($)' } } } }
+                });
+
+                // Line Chart: Year-over-Year Comparison
+                const yearSums = {};
+                filteredData.forEach(d => {
+                    if (!yearSums[d.FiscalYear]) yearSums[d.FiscalYear] = {};
+                    yearSums[d.FiscalYear][d.Category] = (yearSums[d.FiscalYear][d.Category] || 0) + d.Amount;
+                });
+                const lineData = {
+                    labels: Object.keys(yearSums),
+                    datasets: categories.map(cat => ({
+                        label: cat,
+                        data: Object.keys(yearSums).map(year => yearSums[year][cat] || 0),
+                        fill: false,
+                        borderColor: `hsl(${Math.random() * 360}, 70%, 50%)`
+                    }))
+                };
+                if (lineChart) lineChart.destroy();
+                lineChart = new Chart(document.getElementById('lineChart'), {
+                    type: 'line',
+                    data: lineData,
+                    options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Amount ($)' } } } }
+                });
+
+                // Pie Chart: Top Line Items
+                const lineItemSums = {};
+                filteredData.forEach(d => {
+                    lineItemSums[d.LineItem] = (lineItemSums[d.LineItem] || 0) + d.Amount;
+                });
+                const sortedItems = Object.entries(lineItemSums).sort((a, b) => b[1] - a[1]).slice(0, 5);
+                const pieData = {
+                    labels: sortedItems.map(item => item[0]),
+                    datasets: [{
+                        data: sortedItems.map(item => item[1]),
+                        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF']
+                    }]
+                };
+                if (pieChart) pieChart.destroy();
+                pieChart = new Chart(document.getElementById('pieChart'), {
+                    type: 'pie',
+                    data: pieData
+                });
+            }
+
+            // Initial render
+            renderCharts(['FY24', 'FY25'], []);
+
+            // Apply filters
+            document.getElementById('applyFilters').addEventListener('click', () => {
+                const yearFilter = Array.from(document.getElementById('yearFilter').selectedOptions).map(opt => opt.value);
+                const categoryFilter = Array.from(document.getElementById('categoryFilter').selectedOptions).map(opt => opt.value);
+                renderCharts(yearFilter, categoryFilter);
+            });
+        }
+
+        // Load dashboard
+        initDashboard();
+    </script>
+</body>
+</html>
