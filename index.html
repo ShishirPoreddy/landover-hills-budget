@@ -1,0 +1,336 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Landover Hills Budget Dashboard</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background-color: #1a202c; color: #fff; }
+    .chart-wrapper { width: 100%; display: flex; justify-content: center; margin-bottom: 2rem; }
+    .chart-wrapper canvas { max-width: 90% !important; max-height: 75vh !important; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .kpi-card { position: relative; }
+    .kpi-tooltip {
+      display: none;
+      position: absolute;
+      bottom: -1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #2d3748;
+      padding: 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.875rem;
+      white-space: nowrap;
+      z-index: 10;
+    }
+    .kpi-card:hover .kpi-tooltip { display: block; }
+  </style>
+</head>
+<body>
+  <div class="max-w-6xl mx-auto p-6">
+    <h1 class="text-4xl font-bold mb-6 text-center">Landover Hills Budget Dashboard</h1>
+
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div class="kpi-card bg-gray-800 rounded-lg p-6 text-center shadow hover:shadow-xl transition-shadow duration-200" tabindex="0">
+        <h2 class="text-xl font-medium mb-2">Total Budget</h2>
+        <p id="kpi-total" class="text-3xl font-bold">$0</p>
+        <div class="kpi-tooltip">Sum of all budget amounts across categories and years.</div>
+      </div>
+      <div class="kpi-card bg-gray-800 rounded-lg p-6 text-center shadow hover:shadow-xl transition-shadow duration-200" tabindex="0">
+        <h2 class="text-xl font-medium mb-2">Largest Category</h2>
+        <p id="kpi-largest" class="text-3xl font-bold">—</p>
+        <div class="kpi-tooltip">Category with the largest total allocation across all years.</div>
+      </div>
+      <div class="kpi-card bg-gray-800 rounded-lg p-6 text-center shadow hover:shadow-xl transition-shadow duration-200" tabindex="0">
+        <h2 class="text-xl font-medium mb-2">YoY Change</h2>
+        <p id="kpi-change" class="text-3xl font-bold">—</p>
+        <div class="kpi-tooltip">Percent change from the previous fiscal year to the latest.</div>
+      </div>
+    </div>
+
+
+    <div class="w-full mb-8">
+      <div class="flex justify-center border-b border-gray-700 mb-4">
+        <button data-tab="1" class="px-6 py-2 text-lg focus:outline-none hover:bg-gray-700">Total Budget</button>
+        <button data-tab="2" class="px-6 py-2 text-lg focus:outline-none hover:bg-gray-700">Breakdown</button>
+        <button data-tab="3" class="px-6 py-2 text-lg focus:outline-none hover:bg-gray-700">Over Time</button>
+      </div>
+
+
+      <div id="tab-1" class="tab-content active">
+        <div class="flex flex-wrap items-center gap-4 justify-center mb-4">
+          <label class="text-lg">Fiscal Year</label>
+          <select id="fiscalYear1" class="border bg-gray-800 text-white p-2 rounded"></select>
+          <label class="text-lg">Category</label>
+          <select id="category1" class="border bg-gray-800 text-white p-2 rounded"></select>
+          <button id="applyFilters1" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded">Apply Filters</button>
+        </div>
+        <div class="chart-wrapper bg-gray-800 rounded shadow p-6">
+          <canvas id="categoryChart"></canvas>
+        </div>
+      </div>
+
+
+      <div id="tab-2" class="tab-content">
+        <div class="flex flex-wrap items-center gap-4 justify-center mb-4">
+          <label class="text-lg">Fiscal Year</label>
+          <select id="fiscalYear2" class="border bg-gray-800 text-white p-2 rounded"></select>
+          <label class="text-lg">Category</label>
+          <select id="category2" class="border bg-gray-800 text-white p-2 rounded"></select>
+          <button id="applyFilters2" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded">Apply Filters</button>
+        </div>
+        <div class="chart-wrapper bg-gray-800 rounded shadow p-6">
+          <canvas id="amountByCategoryChart"></canvas>
+        </div>
+      </div>
+
+
+      <div id="tab-3" class="tab-content">
+        <div class="flex flex-wrap items-center gap-4 justify-center mb-4">
+          <label class="text-lg">Fiscal Year</label>
+          <select id="fiscalYear3" class="border bg-gray-800 text-white p-2 rounded"></select>
+          <label class="text-lg">Category</label>
+          <select id="category3" class="border bg-gray-800 text-white p-2 rounded"></select>
+          <button id="applyFilters3" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded">Apply Filters</button>
+        </div>
+        <div class="chart-wrapper bg-gray-800 rounded shadow p-6">
+          <canvas id="areaChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    Chart.defaults.color = '#fff';
+    Chart.defaults.font.family = 'sans-serif';
+
+    const API_KEY  = 'AIzaSyAFMUIi5DH5XfgJKP-lNnx0vZNSZvqLFMo';
+    const SHEET_ID = '1u9syd7w3RRqsfEp14s0Yf5pUrJED-SImtAmWKWSN_ew';
+    const RANGE    = 'Sheet1!A:E';
+
+    let data = [], categoryChart, amountByCategoryChart, areaChart;
+
+    async function fetchData() {
+      const res  = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${RANGE}?key=${API_KEY}`
+      );
+      const json = await res.json();
+      data = json.values.slice(1).map(r => ({
+        category:   r[0],
+        lineItem:   r[2],
+        amount:     +r[3] || 0,
+        fiscalYear: r[4]
+      }));
+    }
+
+    function populateSelects(id) {
+      const yrs = [...new Set(data.map(d => d.fiscalYear))].sort();
+      const cs  = [...new Set(data.map(d => d.category))].sort();
+
+      document.getElementById('fiscalYear' + id).innerHTML =
+        '<option value="">All</option>' +
+        yrs.map(y => '<option>' + y + '</option>').join('');
+
+      document.getElementById('category' + id).innerHTML =
+        '<option value="">All</option>' +
+        cs.map(c => '<option>' + c + '</option>').join('');
+    }
+
+    function updateKPIs() {
+      const total = data.reduce((sum, d) => sum + d.amount, 0);
+      const byCat = data.reduce((o, d) => {
+        o[d.category] = (o[d.category]||0) + d.amount;
+        return o;
+      }, {});
+      const [[top, val] = ['—', 0]] = Object.entries(byCat)
+        .sort((a,b) => b[1] - a[1]);
+
+      const yrs = [...new Set(data.map(d => d.fiscalYear))].sort();
+      const L = yrs.at(-1), P = yrs.at(-2) || L;
+      const sumY = y => data
+        .filter(d => d.fiscalYear === y)
+        .reduce((s,d) => s + d.amount, 0);
+      const pct = P
+        ? ((sumY(L) - sumY(P)) / sumY(P) * 100).toFixed(1)
+        : '—';
+
+      document.getElementById('kpi-total').innerText   = `$${total.toLocaleString()}`;
+      document.getElementById('kpi-largest').innerText = `${top} ($${val.toLocaleString()})`;
+      document.getElementById('kpi-change').innerText  = `${pct}%`;
+    }
+
+    function updateCategoryChart() {
+      const fy = document.getElementById('fiscalYear1').value;
+      const ct = document.getElementById('category1').value;
+      let f = data;
+      if (fy) f = f.filter(d => d.fiscalYear === fy);
+      if (ct) f = f.filter(d => d.category === ct);
+
+      const totals = f.reduce((o, d) => {
+        o[d.category] = (o[d.category]||0) + d.amount;
+        return o;
+      }, {});
+
+      const labels = Object.keys(totals), vals = Object.values(totals);
+
+      if (categoryChart) categoryChart.destroy();
+      categoryChart = new Chart(
+        document.getElementById('categoryChart'),
+        {
+          type: 'bar',
+          data: { labels, datasets: [{ data: vals, backgroundColor: 'rgba(56,189,248,0.5)', borderColor: 'rgba(56,189,248,1)', borderWidth: 1 }] },
+          options:{
+            responsive:true,
+            plugins:{ tooltip:{ enabled: true }},
+            scales:{
+              x:{ ticks:{ color:'#fff' }},
+              y:{ beginAtZero:true, ticks:{ color:'#fff' }}
+            }
+          }
+        }
+      );
+    }
+
+    function updateAmountByCategoryChart() {
+      const fy = document.getElementById('fiscalYear2').value;
+      const ct = document.getElementById('category2').value;
+      let f = data;
+      if (fy) f = f.filter(d => d.fiscalYear === fy);
+      if (ct) f = f.filter(d => d.category === ct);
+
+      let labels = [], vals = [], title = '';
+
+      if (!fy && !ct) {
+        const all = data.reduce((o, d) => {
+          o[d.category] = (o[d.category]||0) + d.amount;
+          return o;
+        }, {});
+        const top = Object.entries(all)
+          .sort((a,b)=>b[1]-a[1])
+          .slice(0,5);
+        labels = top.map(e=>e[0]);
+        vals   = top.map(e=>e[1]);
+        title  = 'Top 5 Categories';
+      }
+      else if (fy && !ct) {
+        const all = f.reduce((o, d) => {
+          o[d.category] = (o[d.category]||0) + d.amount;
+          return o;
+        }, {});
+        const top = Object.entries(all)
+          .sort((a,b)=>b[1]-a[1])
+          .slice(0,5);
+        labels = top.map(e=>e[0]);
+        vals   = top.map(e=>e[1]);
+        title  = `Top 5 (${fy})`;
+      }
+      else {
+        const byItem = f.reduce((o, d) => {
+          o[d.lineItem] = (o[d.lineItem]||0) + d.amount;
+          return o;
+        }, {});
+        labels = Object.keys(byItem);
+        vals   = Object.values(byItem);
+        title  = `Breakdown (${ct})`;
+      }
+
+      if (amountByCategoryChart) amountByCategoryChart.destroy();
+      amountByCategoryChart = new Chart(
+        document.getElementById('amountByCategoryChart'),
+        {
+          type: 'pie',
+          data: { labels, datasets: [{ data: vals, backgroundColor: labels.map((_,i)=>`hsl(${(i*360)/labels.length},70%,60%)`) }] },
+          options:{
+            responsive:true,
+            plugins:{
+              tooltip:{ enabled:true },
+              title:{ display:true, text:title },
+              legend:{ labels:{ color:'#fff' }}
+            }
+          }
+        }
+      );
+    }
+
+    function updateAreaChart() {
+      const fy = document.getElementById('fiscalYear3').value;
+      const ct = document.getElementById('category3').value;
+      let f = data;
+      if (fy) f = f.filter(d => d.fiscalYear === fy);
+      if (ct) f = f.filter(d => d.category === ct);
+
+      const yrs = [...new Set(f.map(d=>d.fiscalYear))].sort();
+      const cats = [...new Set(f.map(d=>d.category))];
+      const byYear = {};
+      f.forEach(d=>{
+        byYear[d.fiscalYear] = byYear[d.fiscalYear]||{};
+        byYear[d.fiscalYear][d.category] = (byYear[d.fiscalYear][d.category]||0) + d.amount;
+      });
+
+      const datasets = cats.map((c,i)=>({
+        label: c,
+        data: yrs.map(y=>byYear[y]?.[c]||0),
+        fill: true,
+        backgroundColor: `hsla(${(i*360)/cats.length},70%,60%,0.5)`,
+        borderColor:     `hsl(${(i*360)/cats.length},70%,50%)`
+      }));
+
+      if (areaChart) areaChart.destroy();
+      areaChart = new Chart(
+        document.getElementById('areaChart'),
+        {
+          type: 'line',
+          data: { labels: yrs, datasets },
+          options:{
+            responsive:true,
+            plugins:{ tooltip:{ enabled:true }},
+            scales:{
+              x:{ ticks:{ color:'#fff' }},
+              y:{ stacked:true, ticks:{ color:'#fff' }}
+            }
+          }
+        }
+      );
+    }
+
+    function initTabs() {
+      document.querySelectorAll('[data-tab]').forEach(btn=>{
+        btn.addEventListener('click',()=>{
+          document.querySelectorAll('[data-tab]').forEach(b=>b.classList.remove('border-b-2','border-blue-400'));
+          btn.classList.add('border-b-2','border-blue-400');
+          document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+          document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+          switch(btn.dataset.tab) {
+            case '1': updateCategoryChart();      break;
+            case '2': updateAmountByCategoryChart(); break;
+            case '3': updateAreaChart();          break;
+          }
+        });
+      });
+      document.querySelector('[data-tab="1"]').classList.add('border-b-2','border-blue-400');
+    }
+
+    
+    fetchData().then(()=>{
+      ['1','2','3'].forEach(populateSelects);
+      initTabs();
+      updateKPIs();
+      updateCategoryChart();
+      updateAmountByCategoryChart();
+      updateAreaChart();
+
+      document.getElementById('applyFilters1').addEventListener('click', updateCategoryChart);
+      document.getElementById('applyFilters2').addEventListener('click', updateAmountByCategoryChart);
+      document.getElementById('applyFilters3').addEventListener('click', updateAreaChart);
+    });
+  </script>
+</body>
+</html>
+
