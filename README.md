@@ -10,6 +10,11 @@ The project converts raw town records into machine-readable formats, builds inte
 
 ---
 
+## Live Demo
+👉 [**View the Live Dashboard Here**](https://shishirporeddy.github.io/landover-hills-budget/)  
+
+---
+
 ## Features
 - **Budget Dashboard**: Interactive visualization of revenue and expenditures for 1,800+ residents.  
 - **Public Records Auditing**: Converted and standardized 25+ raw town records into structured datasets.  
@@ -36,10 +41,6 @@ The project converts raw town records into machine-readable formats, builds inte
 
 ---
 
-## Live Demo
-👉 [**View the Live Dashboard Here**](https://shishirporeddy.github.io/landover-hills-budget/)  
-
----
 
 ## Impact
 - Improved fiscal transparency for 1,800+ residents.  
